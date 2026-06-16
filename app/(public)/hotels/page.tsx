@@ -2,11 +2,17 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { MapPin, Star, Bed, Search, Filter, Hotel as HotelIcon, ChevronRight } from 'lucide-react'
 import { subscribeToHotels } from '@/lib/firestore'
 import { Card, CardContent } from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { motion, AnimatePresence } from 'framer-motion'
+
+// Skeleton Loader Component
+const Skeleton = ({ className }: { className?: string }) => (
+  <div className={`animate-pulse bg-slate-200 dark:bg-slate-800 rounded-xl ${className}`} />
+)
 
 export default function Hotels() {
   const [hotels, setHotels] = useState<any[]>([])
@@ -22,17 +28,8 @@ export default function Hotels() {
   }, [])
 
   const filteredHotels = hotels.filter(hotel => 
-    hotel.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    hotel.location.toLowerCase().includes(searchQuery.toLowerCase())
-  )
-
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="flex flex-col items-center gap-4">
-        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-        <p className="text-slate-500 font-black uppercase tracking-widest text-xs">Loading Luxury Stays...</p>
-      </div>
-    </div>
+    (hotel.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (hotel.location || '').toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   return (
@@ -94,83 +91,130 @@ export default function Hotels() {
         {/* Results Grid */}
         <div className="mt-16 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           <AnimatePresence mode='popLayout'>
-            {filteredHotels.map((hotel, i) => (
-              <motion.div
-                key={hotel.id}
-                layout
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                transition={{ delay: i * 0.05 }}
-              >
-                <Card className="border-none shadow-lg shadow-slate-200/50 rounded-[2.5rem] overflow-hidden group hover:shadow-2xl transition-all duration-500 h-full flex flex-col">
-                  <div className="relative h-64 overflow-hidden shrink-0">
-                    <img src={hotel.image} alt={hotel.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                    
-                    <div className="absolute top-6 left-6">
-                      <div className="px-3 py-1.5 rounded-xl bg-white/90 backdrop-blur-md text-blue-600 text-[10px] font-black uppercase tracking-widest shadow-lg">
-                        {hotel.type}
-                      </div>
-                    </div>
-
-                    <div className="absolute top-6 right-6">
-                      <div className="px-3 py-1.5 rounded-xl bg-white/90 backdrop-blur-md text-slate-900 text-xs font-black flex items-center gap-1.5 shadow-lg">
-                        <Star size={14} className="fill-amber-400 text-amber-400" />
-                        {hotel.rating}
+            {loading ? (
+              // Skeleton loaders while fetching data
+              [...Array(6)].map((_, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: i * 0.05 }}
+                >
+                  <div className="border-none shadow-lg shadow-slate-200/50 rounded-[2.5rem] overflow-hidden h-full flex flex-col">
+                    <Skeleton className="h-64 shrink-0" />
+                    <div className="p-8 flex-1 flex flex-col space-y-6">
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-8 w-3/4" />
+                      <div className="pt-6 border-t border-slate-50 mt-auto">
+                        <Skeleton className="h-4 w-20 mb-2" />
+                        <Skeleton className="h-8 w-full" />
                       </div>
                     </div>
                   </div>
+                </motion.div>
+              ))
+            ) : filteredHotels.length > 0 ? (
+              filteredHotels.map((hotel, i) => (
+                <motion.div
+                  key={hotel.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ delay: i * 0.05 }}
+                >
+                  <Card className="border-none shadow-lg shadow-slate-200/50 rounded-[2.5rem] overflow-hidden group hover:shadow-2xl transition-all duration-500 h-full flex flex-col">
+                    <div className="relative h-64 overflow-hidden shrink-0">
+                      {hotel.image ? (
+                        <Image
+                          src={hotel.image}
+                          alt={hotel.name}
+                          fill
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                          sizes="(max-width:768px) 100vw, (max-width:1200px) 50vw, 33vw"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
+                          <HotelIcon className="w-12 h-12 text-slate-400" />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                      
+                      {hotel.type && (
+                        <div className="absolute top-6 left-6">
+                          <div className="px-3 py-1.5 rounded-xl bg-white/90 backdrop-blur-md text-blue-600 text-[10px] font-black uppercase tracking-widest shadow-lg">
+                            {hotel.type}
+                          </div>
+                        </div>
+                      )}
 
-                  <CardContent className="p-8 flex-1 flex flex-col space-y-6">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                        <MapPin size={12} className="text-blue-600" />
-                        {hotel.location}
+                      <div className="absolute top-6 right-6">
+                        <div className="px-3 py-1.5 rounded-xl bg-white/90 backdrop-blur-md text-slate-900 text-xs font-black flex items-center gap-1.5 shadow-lg">
+                          <Star size={14} className="fill-amber-400 text-amber-400" />
+                          {hotel.rating || 4.5}
+                        </div>
                       </div>
-                      <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-tight">{hotel.name}</h3>
                     </div>
 
-                    <div className="flex items-center justify-between pt-6 border-t border-slate-50 mt-auto">
-                      <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Price / Night</p>
-                        <p className="text-xl font-black text-blue-600">₨{hotel.price}</p>
+                    <CardContent className="p-8 flex-1 flex flex-col space-y-6">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                          <MapPin size={12} className="text-blue-600" />
+                          {hotel.location || 'Nepal'}
+                        </div>
+                        <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-tight">{hotel.name}</h3>
                       </div>
-                      <Link href={`/hotels/${hotel.id}`}>
-                        <Button size="sm" className="rounded-xl px-6 py-3 font-black text-[10px] uppercase tracking-[0.2em] shadow-lg shadow-blue-600/10">
-                          View Details
-                        </Button>
-                      </Link>
-                    </div>
-                  </CardContent>
-                </Card>
+
+                      <div className="flex items-center justify-between pt-6 border-t border-slate-50 mt-auto">
+                        <div>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Price / Night</p>
+                          <p className="text-xl font-black text-blue-600">
+                            {hotel.price ? (typeof hotel.price === 'number' ? `₨${hotel.price.toLocaleString()}` : `₨${hotel.price}`) : 'Contact us'}
+                          </p>
+                        </div>
+                        <Link href={`/hotels/${hotel.id}`} className="no-underline">
+                          <Button size="sm" className="rounded-xl px-6 py-3 font-black text-[10px] uppercase tracking-[0.2em] shadow-lg shadow-blue-600/10">
+                            View Details
+                          </Button>
+                        </Link>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))
+            ) : (
+              // Empty state when no data available
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="col-span-full py-20 text-center space-y-6"
+              >
+                <div className="w-24 h-24 rounded-[2rem] bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
+                  <HotelIcon size={48} />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white">
+                    {searchQuery ? 'No hotels found' : 'No hotels available'}
+                  </h3>
+                  <p className="text-slate-500 font-medium">
+                    {searchQuery 
+                      ? 'Try searching for a different name or location.' 
+                      : 'Check back soon for amazing hotels in Nepal!'}
+                  </p>
+                </div>
+                {searchQuery && (
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setSearchQuery('')}
+                    className="rounded-xl font-black text-xs uppercase tracking-widest"
+                  >
+                    Show All Hotels
+                  </Button>
+                )}
               </motion.div>
-            ))}
+            )}
           </AnimatePresence>
         </div>
-
-        {filteredHotels.length === 0 && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="mt-20 text-center space-y-6"
-          >
-            <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-300">
-              <HotelIcon size={40} />
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-xl font-black text-slate-900">No hotels found</h3>
-              <p className="text-slate-500 font-medium">Try searching for a different name or location.</p>
-            </div>
-            <Button 
-              variant="outline" 
-              onClick={() => setSearchQuery('')}
-              className="rounded-xl font-black text-xs uppercase tracking-widest"
-            >
-              Show All Hotels
-            </Button>
-          </motion.div>
-        )}
       </div>
     </div>
   )

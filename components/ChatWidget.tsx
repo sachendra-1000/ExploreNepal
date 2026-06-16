@@ -1,66 +1,49 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
-import { MessageCircle, X, Send, User, UserCheck, Clock, Minus, Maximize2 } from 'lucide-react'
+import { MessageCircle, X, Send, User, Minus, Maximize2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { io, Socket } from 'socket.io-client'
 import { useAuth } from '@/context/AuthContext'
+import { sendChatMessage, subscribeToChatMessages, markMessageAsRead } from '@/lib/firestore'
 import Button from './ui/Button'
-
-let socket: Socket
 
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
   const [message, setMessage] = useState('')
   const [messages, setMessages] = useState<any[]>([])
-  const [isOnline, setIsOnline] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
   const { user } = useAuth()
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    socketInitializer()
-    return () => {
-      if (socket) socket.disconnect()
-    }
-  }, [])
+    const unsubscribe = subscribeToChatMessages((newMessages) => {
+      setMessages(newMessages)
+      // Update unread count
+      if (!isOpen || isMinimized) {
+        const unread = newMessages.filter(m => !m.read && m.senderRole !== 'user').length
+        setUnreadCount(unread)
+      }
+    })
+    return () => unsubscribe()
+  }, [isOpen, isMinimized])
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
+    // Mark messages as read when chat is open
+    if (isOpen && !isMinimized) {
+      messages.forEach(m => {
+        if (!m.read && m.senderRole === 'admin') {
+          markMessageAsRead(m.id)
+        }
+      })
+      setUnreadCount(0)
+    }
   }, [messages, isOpen, isMinimized])
 
-  const socketInitializer = async () => {
-    await fetch('/api/socket')
-    socket = io({
-      path: '/api/socket',
-    })
-
-    socket.on('connect', () => {
-      console.log('Connected to socket')
-      setIsOnline(true)
-      socket.emit('get-history')
-    })
-
-    socket.on('disconnect', () => {
-      setIsOnline(false)
-    })
-
-    socket.on('chat-history', (history: any[]) => {
-      setMessages(history)
-    })
-
-    socket.on('receive-message', (newMessage: any) => {
-      setMessages((prev) => [...prev, newMessage])
-      if (!isOpen || isMinimized) {
-        setUnreadCount((prev) => prev + 1)
-      }
-    })
-  }
-
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!message.trim()) return
 
@@ -71,7 +54,7 @@ export default function ChatWidget() {
       message: message.trim()
     }
 
-    socket.emit('send-message', messageData)
+    await sendChatMessage(messageData)
     setMessage('')
   }
 
@@ -102,12 +85,12 @@ export default function ChatWidget() {
                   <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
                     <User size={20} />
                   </div>
-                  <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-blue-600 ${isOnline ? 'bg-emerald-400' : 'bg-slate-400'}`} />
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-blue-600 bg-emerald-400" />
                 </div>
                 <div>
                   <h3 className="text-sm font-black tracking-tight">Live Support</h3>
                   <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest">
-                    {isOnline ? 'Online' : 'Offline'}
+                    Online
                   </p>
                 </div>
               </div>
@@ -145,11 +128,11 @@ export default function ChatWidget() {
                       </div>
                     </div>
                   ) : (
-                    messages.map((msg, idx) => {
-                      const isMe = msg.senderId === (user?.uid || '') || (msg.senderId.startsWith('guest') && !user);
+                    messages.map((msg) => {
+                      const isMe = msg.senderRole === 'user' || (msg.senderId.startsWith('guest') && !user?.uid)
                       return (
                         <div 
-                          key={idx} 
+                          key={msg.id} 
                           className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                         >
                           <div className={`max-w-[80%] p-4 rounded-2xl text-sm font-medium shadow-sm ${
@@ -165,7 +148,9 @@ export default function ChatWidget() {
                             </span>
                             <span className="text-[9px] font-bold text-slate-300">•</span>
                             <span className="text-[9px] font-bold text-slate-400">
-                              {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {msg.timestamp?.toDate?.() 
+                                ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
                         </div>

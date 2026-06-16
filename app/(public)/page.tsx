@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { 
@@ -23,14 +23,29 @@ import {
 import { motion } from 'framer-motion'
 import { Card, CardContent } from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
+import {
+  subscribeToDestinations,
+  subscribeToPackages,
+  subscribeToHotels,
+  subscribeToGuides,
+  subscribeToHeroSlides,
+  subscribeToHomeContent,
+  subscribeToTestimonials
+} from '@/lib/firestore'
+
+// Skeleton Loader Component
+const Skeleton = ({ className }: { className?: string }) => (
+  <div className={`animate-pulse bg-slate-200 dark:bg-slate-800 rounded-xl ${className}`} />
+)
 
 export default function Home() {
-  const stats = [
-    { number: '50K+', label: 'Happy Travelers', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { number: '500+', label: 'Destinations', icon: MapPin, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { number: '200+', label: 'Expert Guides', icon: UserCheck, color: 'text-violet-600', bg: 'bg-violet-50' },
-    { number: '15+', label: 'Years Experience', icon: Calendar, color: 'text-rose-600', bg: 'bg-rose-50' }
-  ]
+  // State for data
+  const [destinations, setDestinations] = useState<any[]>([])
+  const [packages, setPackages] = useState<any[]>([])
+  const [hotels, setHotels] = useState<any[]>([])
+  const [guides, setGuides] = useState<any[]>([])
+  const [testimonials, setTestimonials] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
   const services = [
     { icon: Briefcase, title: 'Tour Packages', description: 'Curated travel packages for every type of traveler.', color: 'blue', bg: 'bg-blue-50', text: 'text-blue-600', hover: 'group-hover:bg-blue-600' },
@@ -41,10 +56,62 @@ export default function Home() {
     { icon: Headphones, title: '24/7 Support', description: 'Dedicated assistance for your entire journey.', color: 'indigo', bg: 'bg-indigo-50', text: 'text-indigo-600', hover: 'group-hover:bg-indigo-600' }
   ]
 
-  const featuredPlaces = [
-    { name: 'Mount Everest', location: 'Solukhumbu', image: '/image/Everest Base Camp.jpg', rating: 4.9, price: 'Rs. 45,000' },
-    { name: 'Phewa Lake', location: 'Pokhara', image: '/image/Phewa Lake.jpg', rating: 4.8, price: 'Rs. 12,000' },
-    { name: 'Boudhanath Stupa', location: 'Kathmandu', image: '/image/Boudhanath Stupa.jpg', rating: 4.9, price: 'Rs. 5,000' }
+  // Subscribe to Firestore data
+  useEffect(() => {
+    const unsubDestinations = subscribeToDestinations(setDestinations)
+    const unsubPackages = subscribeToPackages(setPackages)
+    const unsubHotels = subscribeToHotels(setHotels)
+    const unsubGuides = subscribeToGuides(setGuides)
+    const unsubTestimonials = subscribeToTestimonials(setTestimonials)
+
+    // Simulate loading for better UX
+    const timer = setTimeout(() => setLoading(false), 1000)
+
+    return () => {
+      unsubDestinations()
+      unsubPackages()
+      unsubHotels()
+      unsubGuides()
+      unsubTestimonials()
+      clearTimeout(timer)
+    }
+  }, [])
+
+  // Get featured places (use first 3 destinations or hotels if available)
+  const featuredPlaces = destinations.slice(0, 3).length > 0 
+    ? destinations.slice(0, 3) 
+    : hotels.slice(0, 3)
+
+  // Calculate stats from data
+  const stats = [
+    { 
+      number: `${packages.length > 0 ? packages.length : '0'}`, 
+      label: 'Tour Packages', 
+      icon: Briefcase, 
+      color: 'text-blue-600', 
+      bg: 'bg-blue-50' 
+    },
+    { 
+      number: `${destinations.length > 0 ? destinations.length : '0'}`, 
+      label: 'Destinations', 
+      icon: MapPin, 
+      color: 'text-emerald-600', 
+      bg: 'bg-emerald-50' 
+    },
+    { 
+      number: `${guides.length > 0 ? guides.length : '0'}`, 
+      label: 'Expert Guides', 
+      icon: UserCheck, 
+      color: 'text-violet-600', 
+      bg: 'bg-violet-50' 
+    },
+    { 
+      number: `${hotels.length > 0 ? hotels.length : '0'}`, 
+      label: 'Hotels', 
+      icon: Hotel, 
+      color: 'text-rose-600', 
+      bg: 'bg-rose-50' 
+    }
   ]
 
   return (
@@ -191,45 +258,78 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {featuredPlaces.map((place, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, scale: 0.95 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                className="group cursor-pointer"
-              >
-                <div className="relative aspect-[4/5] rounded-[2.5rem] overflow-hidden shadow-2xl">
-                  <Image
-                    src={place.image}
-                    alt={place.name}
-                    fill
-                    sizes="(max-width: 768px) 100vw, (max-width: 1280px) 33vw, 33vw"
-                    className="object-cover group-hover:scale-110 transition-transform duration-700"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-80" />
-                  
-                  <div className="absolute top-6 right-6">
-                    <div className="px-3 py-1.5 rounded-xl bg-white/20 backdrop-blur-md border border-white/20 text-white text-xs font-black flex items-center gap-1.5">
-                      <Star size={14} className="fill-amber-400 text-amber-400" />
-                      {place.rating}
+            {loading ? (
+              // Skeleton loaders while fetching data
+              [...Array(3)].map((_, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: i * 0.1 }}
+                >
+                  <div className="aspect-[4/5] rounded-[2.5rem] bg-slate-200 dark:bg-slate-800" />
+                </motion.div>
+              ))
+            ) : featuredPlaces.length > 0 ? (
+              featuredPlaces.map((place, i) => (
+                <motion.div
+                  key={place.id || i}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.1 }}
+                  className="group cursor-pointer"
+                >
+                  <div className="relative aspect-[4/5] rounded-[2.5rem] overflow-hidden shadow-2xl">
+                    {place.image ? (
+                      <Image
+                        src={place.image}
+                        alt={place.name || 'Destination'}
+                        fill
+                        sizes="(max-width: 768px) 100vw, (max-width: 1280px) 33vw, 33vw"
+                        className="object-cover group-hover:scale-110 transition-transform duration-700"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
+                        <MapPin className="w-12 h-12 text-slate-400" />
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-80" />
+                    
+                    <div className="absolute top-6 right-6">
+                      <div className="px-3 py-1.5 rounded-xl bg-white/20 backdrop-blur-md border border-white/20 text-white text-xs font-black flex items-center gap-1.5">
+                        <Star size={14} className="fill-amber-400 text-amber-400" />
+                        {place.rating || 4.5}
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="absolute bottom-8 left-8 right-8 space-y-2">
-                    <p className="text-xs font-black text-blue-400 uppercase tracking-widest">{place.location}</p>
-                    <h3 className="text-2xl font-black text-white tracking-tight">{place.name}</h3>
-                    <div className="flex items-center justify-between pt-4 border-t border-white/10">
-                      <span className="text-lg font-black text-white">{place.price}</span>
-                      <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 translate-y-4 group-hover:translate-y-0 transition-all">
-                        <ChevronRight size={20} />
+                    <div className="absolute bottom-8 left-8 right-8 space-y-2">
+                      <p className="text-xs font-black text-blue-400 uppercase tracking-widest">{place.location || 'Nepal'}</p>
+                      <h3 className="text-2xl font-black text-white tracking-tight">{place.name || place.title}</h3>
+                      <div className="flex items-center justify-between pt-4 border-t border-white/10">
+                        <span className="text-lg font-black text-white">
+                          {place.price ? (typeof place.price === 'number' ? `Rs. ${place.price.toLocaleString()}` : place.price) : 'Contact us'}
+                        </span>
+                        <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 translate-y-4 group-hover:translate-y-0 transition-all">
+                          <ChevronRight size={20} />
+                        </div>
                       </div>
                     </div>
                   </div>
+                </motion.div>
+              ))
+            ) : (
+              // Empty state when no data available
+              <div className="col-span-full py-20 text-center">
+                <div className="max-w-md mx-auto space-y-6">
+                  <div className="w-24 h-24 bg-slate-100 dark:bg-slate-800 rounded-[2rem] flex items-center justify-center mx-auto">
+                    <MapPin className="w-12 h-12 text-slate-400" />
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white">No destinations available</h3>
+                  <p className="text-slate-500 font-medium">Check back soon for amazing destinations in Nepal!</p>
                 </div>
-              </motion.div>
-            ))}
+              </div>
+            )}
           </div>
         </div>
       </section>

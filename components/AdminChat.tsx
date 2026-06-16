@@ -1,14 +1,12 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
-import { MessageCircle, Send, User, Clock, Search, Filter, MoreVertical, CheckCheck } from 'lucide-react'
+import { MessageCircle, Send, User, Search, Filter, MoreVertical, CheckCheck, Trash2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { io, Socket } from 'socket.io-client'
 import { useAuth } from '@/context/AuthContext'
+import { sendChatMessage, subscribeToChatMessages, deleteChatMessage, markMessageAsRead } from '@/lib/firestore'
 import Button from './ui/Button'
 import { Card, CardContent } from './ui/Card'
-
-let socket: Socket
 
 export default function AdminChat() {
   const [messages, setMessages] = useState<any[]>([])
@@ -18,39 +16,25 @@ export default function AdminChat() {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    socketInitializer()
-    return () => {
-      if (socket) socket.disconnect()
-    }
+    const unsubscribe = subscribeToChatMessages((newMessages) => {
+      setMessages(newMessages)
+    })
+    return () => unsubscribe()
   }, [])
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
+    // Mark unread user messages as read
+    messages.forEach(m => {
+      if (!m.read && m.senderRole === 'user') {
+        markMessageAsRead(m.id)
+      }
+    })
   }, [messages])
 
-  const socketInitializer = async () => {
-    await fetch('/api/socket')
-    socket = io({
-      path: '/api/socket',
-    })
-
-    socket.on('connect', () => {
-      console.log('Admin connected to socket')
-      socket.emit('get-history')
-    })
-
-    socket.on('chat-history', (history: any[]) => {
-      setMessages(history)
-    })
-
-    socket.on('receive-message', (newMessage: any) => {
-      setMessages((prev) => [...prev, newMessage])
-    })
-  }
-
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!message.trim()) return
 
@@ -61,9 +45,20 @@ export default function AdminChat() {
       message: message.trim()
     }
 
-    socket.emit('send-message', messageData)
+    await sendChatMessage(messageData)
     setMessage('')
   }
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (confirm('Are you sure you want to delete this message?')) {
+      await deleteChatMessage(messageId)
+    }
+  }
+
+  const filteredMessages = messages.filter(m => 
+    m.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    m.senderName.toLowerCase().includes(searchQuery.toLowerCase())
+  )
 
   return (
     <div className="h-[calc(100vh-180px)] flex gap-6 overflow-hidden">
@@ -108,7 +103,7 @@ export default function AdminChat() {
               <h3 className="text-lg font-black text-slate-900 tracking-tight leading-none mb-1">Public Support Channel</h3>
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Server Operational</span>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active</span>
               </div>
             </div>
           </div>
@@ -127,14 +122,14 @@ export default function AdminChat() {
           ref={scrollRef}
           className="flex-1 p-8 overflow-y-auto bg-slate-50/50 space-y-6 custom-scrollbar"
         >
-          {messages.map((msg, idx) => {
-            const isMe = msg.senderRole === 'admin';
+          {filteredMessages.map((msg) => {
+            const isMe = msg.senderRole === 'admin'
             return (
               <div 
-                key={idx} 
-                className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
+                key={msg.id} 
+                className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group`}
               >
-                <div className={`max-w-[70%] group relative`}>
+                <div className={`max-w-[70%] relative`}>
                   {!isMe && (
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 ml-1">
                       {msg.senderName}
@@ -149,9 +144,17 @@ export default function AdminChat() {
                   </div>
                   <div className={`mt-2 flex items-center gap-2 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                     <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">
-                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {msg.timestamp?.toDate?.() 
+                        ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                     {isMe && <CheckCheck size={12} className="text-indigo-400" />}
+                    <button 
+                      onClick={() => handleDeleteMessage(msg.id)}
+                      className="p-1 rounded-full hover:bg-slate-200/50 text-slate-400 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      <Trash2 size={12} />
+                    </button>
                   </div>
                 </div>
               </div>

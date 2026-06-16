@@ -73,7 +73,15 @@ import {
   deletePackage,
   deleteBusRoute,
   updateBookingStatus,
-  verifyPayment
+  verifyPayment,
+  createHotel,
+  updateHotel,
+  createGuide,
+  updateGuide,
+  createPackage,
+  updatePackage,
+  createBusRoute,
+  updateBusRoute
 } from '@/lib/firestore'
 
 import AdminChat from '@/components/AdminChat'
@@ -133,12 +141,22 @@ function AdminDashboardContent() {
 
   // Modal States
   const [showUserModal, setShowUserModal] = useState(false)
+  const [showServiceModal, setShowServiceModal] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [editingService, setEditingService] = useState<any | null>(null)
   const [userFormData, setUserFormData] = useState({
     name: '',
     email: '',
     phone: '',
     role: 'tourist' as 'tourist' | 'provider' | 'admin'
+  })
+  const [serviceFormData, setServiceFormData] = useState({
+    name: '',
+    location: '',
+    price: '',
+    rating: 4.5,
+    image: '',
+    available: true
   })
 
   // Load Data
@@ -196,6 +214,88 @@ function AdminDashboardContent() {
       const result = await deleteUser(id)
       if (result.success) showToast('success', 'User deleted')
     }
+  }
+
+  // Service Handlers
+  const handleOpenServiceModal = (item?: any) => {
+    setEditingService(item || null)
+    if (item) {
+      setServiceFormData({
+        name: item.name || item.title || '',
+        location: item.location || '',
+        price: item.price?.toString() || '',
+        rating: item.rating || 4.5,
+        image: item.image || '',
+        available: item.available !== false
+      })
+    } else {
+      setServiceFormData({
+        name: '',
+        location: '',
+        price: '',
+        rating: 4.5,
+        image: '',
+        available: true
+      })
+    }
+    setShowServiceModal(true)
+  }
+
+  const handleServiceSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    let result
+
+    try {
+      // Parse numeric fields
+      const dataToSave = {
+        ...serviceFormData,
+        price: parseFloat(serviceFormData.price) || 0,
+        rating: parseFloat(serviceFormData.rating) || 4.5
+      }
+
+      if (editingService) {
+        switch (serviceTab) {
+          case 'hotels':
+            result = await updateHotel(editingService.id, dataToSave)
+            break
+          case 'guides':
+            result = await updateGuide(editingService.id, dataToSave)
+            break
+          case 'packages':
+            result = await updatePackage(editingService.id, dataToSave)
+            break
+          case 'bus':
+            result = await updateBusRoute(editingService.id, dataToSave)
+            break
+        }
+      } else {
+        switch (serviceTab) {
+          case 'hotels':
+            result = await createHotel(dataToSave)
+            break
+          case 'guides':
+            result = await createGuide(dataToSave)
+            break
+          case 'packages':
+            result = await createPackage(dataToSave)
+            break
+          case 'bus':
+            result = await createBusRoute(dataToSave)
+            break
+        }
+      }
+
+      if (result.success) {
+        showToast('success', editingService ? 'Service updated successfully' : 'Service added successfully')
+        setShowServiceModal(false)
+      } else {
+        showToast('error', 'Failed to save service')
+      }
+    } catch (error) {
+      showToast('error', 'Failed to save service')
+    }
+    setLoading(false)
   }
 
   const handleUpdateBookingStatus = async (bookingId: string, status: string) => {
@@ -631,7 +731,7 @@ function AdminDashboardContent() {
                   <h2 className="text-3xl font-black tracking-tight">Catalog Management</h2>
                   <p className="text-slate-500 font-medium mt-1">Orchestrate your inventory across all verticals.</p>
                 </div>
-                <button className="px-6 py-3 bg-indigo-600 text-white rounded-2xl text-sm font-black flex items-center gap-2 shadow-xl shadow-indigo-600/30 hover:bg-indigo-700 transition-all hover:-translate-y-1">
+                <button onClick={() => handleOpenServiceModal()} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl text-sm font-black flex items-center gap-2 shadow-xl shadow-indigo-600/30 hover:bg-indigo-700 transition-all hover:-translate-y-1">
                   <Plus className="w-5 h-5" /> Register New Asset
                 </button>
               </div>
@@ -671,11 +771,36 @@ function AdminDashboardContent() {
                         <div className="w-full h-full flex items-center justify-center text-slate-300"><Package className="w-12 h-12" /></div>
                       )}
                       <div className="absolute top-4 right-4 flex gap-2">
-                        <button className="p-2.5 bg-white/90 backdrop-blur shadow-lg rounded-xl text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all"><Edit className="w-4 h-4" /></button>
-                        <button className="p-2.5 bg-white/90 backdrop-blur shadow-lg rounded-xl text-rose-600 hover:bg-rose-600 hover:text-white transition-all"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={() => handleOpenServiceModal(item)} className="p-2.5 bg-white/90 backdrop-blur shadow-lg rounded-xl text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all"><Edit className="w-4 h-4" /></button>
+                        <button onClick={async () => {
+                          if (confirm('Delete this item permanently?')) {
+                            try {
+                              let result
+                              switch (serviceTab) {
+                                case 'hotels':
+                                  result = await deleteHotel(item.id)
+                                  break
+                                case 'guides':
+                                  result = await deleteGuide(item.id)
+                                  break
+                                case 'packages':
+                                  result = await deletePackage(item.id)
+                                  break
+                                case 'bus':
+                                  result = await deleteBusRoute(item.id)
+                                  break
+                              }
+                              if (result.success) {
+                                showToast('success', 'Item deleted successfully')
+                              }
+                            } catch (error) {
+                              showToast('error', 'Failed to delete item')
+                            }
+                          }
+                        }} className="p-2.5 bg-white/90 backdrop-blur shadow-lg rounded-xl text-rose-600 hover:bg-rose-600 hover:text-white transition-all"><Trash2 className="w-4 h-4" /></button>
                       </div>
                       <div className="absolute bottom-4 left-4">
-                        <span className="px-3 py-1.5 bg-white/90 backdrop-blur rounded-lg text-[10px] font-black uppercase text-indigo-600 shadow-lg">Rs. {item.price.toLocaleString()}</span>
+                        <span className="px-3 py-1.5 bg-white/90 backdrop-blur rounded-lg text-[10px] font-black uppercase text-indigo-600 shadow-lg">Rs. {typeof item.price === 'number' ? item.price.toLocaleString() : item.price || '0'}</span>
                       </div>
                     </div>
                     <div className="p-6">
@@ -1008,6 +1133,65 @@ function AdminDashboardContent() {
                 <div className="pt-6 flex gap-4">
                   <button type="button" onClick={() => setShowUserModal(false)} className="flex-1 py-4 rounded-2xl font-black text-sm border border-slate-200 dark:border-slate-800 hover:bg-slate-50 transition-all">Abort</button>
                   <button type="submit" className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all">Confirm Changes</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Service Modal */}
+      <AnimatePresence>
+        {showServiceModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowServiceModal(false)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 40 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 40 }}
+              className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-[3rem] shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800"
+            >
+              <div className="px-10 pt-10 pb-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                <div>
+                  <h3 className="text-2xl font-black tracking-tight">{editingService ? 'Update Service' : 'Add New Service'}</h3>
+                  <p className="text-sm text-slate-500 font-medium mt-1">Enter details for the new {serviceTab}.</p>
+                </div>
+                <button onClick={() => setShowServiceModal(false)} className="p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-colors text-slate-400"><X className="w-6 h-6" /></button>
+              </div>
+
+              <form onSubmit={handleServiceSubmit} className="p-10 space-y-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Name / Title</label>
+                  <input type="text" required value={serviceFormData.name} onChange={(e) => setServiceFormData({...serviceFormData, name: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Location</label>
+                  <input type="text" required value={serviceFormData.location} onChange={(e) => setServiceFormData({...serviceFormData, location: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Price (Rs.)</label>
+                    <input type="number" required value={serviceFormData.price} onChange={(e) => setServiceFormData({...serviceFormData, price: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Rating</label>
+                    <input type="number" step="0.1" min="0" max="5" value={serviceFormData.rating} onChange={(e) => setServiceFormData({...serviceFormData, rating: parseFloat(e.target.value)})} className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Image URL</label>
+                  <input type="url" value={serviceFormData.image} onChange={(e) => setServiceFormData({...serviceFormData, image: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold" />
+                </div>
+                <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl">
+                  <div>
+                    <p className="text-sm font-black text-slate-900 dark:text-white">Available</p>
+                    <p className="text-[10px] text-slate-500 font-medium">Mark this service as available for booking</p>
+                  </div>
+                  <div onClick={() => setServiceFormData({...serviceFormData, available: !serviceFormData.available})} className={`w-12 h-6 rounded-full relative cursor-pointer transition-all ${serviceFormData.available ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}>
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${serviceFormData.available ? 'left-7' : 'left-1'}`} />
+                  </div>
+                </div>
+                <div className="pt-6 flex gap-4">
+                  <button type="button" onClick={() => setShowServiceModal(false)} className="flex-1 py-4 rounded-2xl font-black text-sm border border-slate-200 dark:border-slate-800 hover:bg-slate-50 transition-all">Cancel</button>
+                  <button type="submit" className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all">{editingService ? 'Save Changes' : 'Add Service'}</button>
                 </div>
               </form>
             </motion.div>
