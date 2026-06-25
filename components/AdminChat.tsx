@@ -16,7 +16,7 @@ export default function AdminChat() {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const unsubscribe = subscribeToChatMessages((newMessages) => {
+    const unsubscribe = subscribeToChatMessages((newMessages: any[]) => {
       setMessages(newMessages)
     })
     return () => unsubscribe()

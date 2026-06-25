@@ -1,61 +1,76 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
-import { MessageCircle, X, Send, User, Minus, Maximize2 } from 'lucide-react'
+import { MessageCircle, X, Send, User, Minus, Maximize2, Sparkles } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useAuth } from '@/context/AuthContext'
-import { sendChatMessage, subscribeToChatMessages, markMessageAsRead } from '@/lib/firestore'
-import Button from './ui/Button'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
   const [message, setMessage] = useState('')
-  const [messages, setMessages] = useState<any[]>([])
+  const [messages, setMessages] = useState<Array<{ role: 'user' | 'model'; content: string; id: string }>>([])
+  const [isTyping, setIsTyping] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
-  const { user } = useAuth()
   const scrollRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const unsubscribe = subscribeToChatMessages((newMessages) => {
-      setMessages(newMessages)
-      // Update unread count
-      if (!isOpen || isMinimized) {
-        const unread = newMessages.filter(m => !m.read && m.senderRole !== 'user').length
-        setUnreadCount(unread)
-      }
-    })
-    return () => unsubscribe()
-  }, [isOpen, isMinimized])
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-    // Mark messages as read when chat is open
-    if (isOpen && !isMinimized) {
-      messages.forEach(m => {
-        if (!m.read && m.senderRole === 'admin') {
-          markMessageAsRead(m.id)
-        }
-      })
-      setUnreadCount(0)
-    }
-  }, [messages, isOpen, isMinimized])
+  }, [messages, isTyping])
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!message.trim()) return
+    if (!message.trim() || isTyping) return
 
-    const messageData = {
-      senderId: user?.uid || 'guest-' + Math.random().toString(36).substr(2, 9),
-      senderName: user?.displayName || 'Guest User',
-      senderRole: user?.role === 'admin' ? 'admin' : 'user',
-      message: message.trim()
-    }
-
-    await sendChatMessage(messageData)
+    const userMessageId = Date.now().toString()
+    const newMessages = [
+      ...messages,
+      {
+        role: 'user' as const,
+        content: message.trim(),
+        id: userMessageId
+      }
+    ]
+    setMessages(newMessages)
     setMessage('')
+    setIsTyping(true)
+    setUnreadCount(0)
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newMessages })
+      })
+
+      const data = await response.json()
+      setMessages([
+        ...newMessages,
+        {
+          role: 'model',
+          content: data.text || 'Sorry, I could not get a response.',
+          id: (Date.now() + 1).toString()
+        }
+      ])
+      if (!isOpen || isMinimized) {
+        setUnreadCount(prev => prev + 1)
+      }
+    } catch (error) {
+      console.error('Error sending message:', error)
+      setMessages([
+        ...newMessages,
+        {
+          role: 'model',
+          content: 'Sorry, there was an error sending your message. Please try again.',
+          id: (Date.now() + 1).toString()
+        }
+      ])
+    } finally {
+      setIsTyping(false)
+    }
   }
 
   const toggleChat = () => {
@@ -75,22 +90,22 @@ export default function ChatWidget() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             className={`bg-white border border-slate-100 rounded-[2rem] shadow-2xl overflow-hidden flex flex-col transition-all duration-300 ${
-              isMinimized ? 'h-20 w-72' : 'h-[550px] w-[380px] max-w-[90vw]'
+              isMinimized ? 'h-20 w-72' : 'h-[600px] w-[400px] max-w-[90vw]'
             }`}
           >
             {/* Header */}
-            <div className="bg-blue-600 p-5 flex items-center justify-between text-white shrink-0">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-5 flex items-center justify-between text-white shrink-0">
               <div className="flex items-center gap-3">
                 <div className="relative">
                   <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                    <User size={20} />
+                    <Sparkles size={20} />
                   </div>
                   <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-blue-600 bg-emerald-400" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black tracking-tight">Live Support</h3>
+                  <h3 className="text-sm font-black tracking-tight">Explore Nepal AI</h3>
                   <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest">
-                    Online
+                    Always online
                   </p>
                 </div>
               </div>
@@ -115,47 +130,66 @@ export default function ChatWidget() {
                 {/* Messages Area */}
                 <div 
                   ref={scrollRef}
-                  className="flex-1 p-6 overflow-y-auto bg-slate-50 space-y-4 custom-scrollbar"
+                  className="flex-1 p-6 overflow-y-auto bg-slate-50 space-y-4"
                 >
                   {messages.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4">
-                      <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center text-blue-400">
-                        <MessageCircle size={32} />
+                      <div className="w-20 h-20 rounded-[2rem] bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center text-indigo-600">
+                        <MessageCircle size={40} />
                       </div>
                       <div className="space-y-2">
-                        <h4 className="text-sm font-black text-slate-900">Start a Conversation</h4>
-                        <p className="text-xs font-medium text-slate-500">Ask us anything about your trip to Nepal!</p>
+                        <h4 className="text-lg font-black text-slate-900">Hello there! 👋</h4>
+                        <p className="text-sm font-medium text-slate-500">
+                          I'm your AI travel assistant for Explore Nepal! Ask me anything about travel in Nepal, our services, or general questions!
+                        </p>
                       </div>
                     </div>
                   ) : (
                     messages.map((msg) => {
-                      const isMe = msg.senderRole === 'user' || (msg.senderId.startsWith('guest') && !user?.uid)
+                      const isMe = msg.role === 'user'
                       return (
                         <div 
                           key={msg.id} 
                           className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                         >
-                          <div className={`max-w-[80%] p-4 rounded-2xl text-sm font-medium shadow-sm ${
+                          <div className={`max-w-[85%] p-4 rounded-2xl text-sm font-medium shadow-sm ${
                             isMe 
-                              ? 'bg-blue-600 text-white rounded-tr-none' 
+                              ? 'bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-tr-none' 
                               : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none'
                           }`}>
-                            {msg.message}
-                          </div>
-                          <div className="mt-1 flex items-center gap-1.5 px-1">
-                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                              {msg.senderRole === 'admin' ? 'Support' : msg.senderName}
-                            </span>
-                            <span className="text-[9px] font-bold text-slate-300">•</span>
-                            <span className="text-[9px] font-bold text-slate-400">
-                              {msg.timestamp?.toDate?.() 
-                                ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
+                            <div className="prose prose-sm prose-indigo">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {msg.content}
+                              </ReactMarkdown>
+                            </div>
                           </div>
                         </div>
                       )
                     })
+                  )}
+                  {isTyping && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center">
+                        <Sparkles size={16} className="text-indigo-600" />
+                      </div>
+                      <div className="flex gap-1.5 p-3 bg-white rounded-2xl border border-slate-100">
+                        <motion.div
+                          className="w-2 h-2 bg-slate-400 rounded-full"
+                          animate={{ y: [0, -6, 0] }}
+                          transition={{ duration: 1.2, repeat: Infinity, delay: 0 }}
+                        />
+                        <motion.div
+                          className="w-2 h-2 bg-slate-400 rounded-full"
+                          animate={{ y: [0, -6, 0] }}
+                          transition={{ duration: 1.2, repeat: Infinity, delay: 0.2 }}
+                        />
+                        <motion.div
+                          className="w-2 h-2 bg-slate-400 rounded-full"
+                          animate={{ y: [0, -6, 0] }}
+                          transition={{ duration: 1.2, repeat: Infinity, delay: 0.4 }}
+                        />
+                      </div>
+                    </div>
                   )}
                 </div>
 
@@ -169,13 +203,13 @@ export default function ChatWidget() {
                       type="text" 
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
-                      placeholder="Type your message..."
-                      className="w-full pl-6 pr-14 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-600 transition-all text-sm font-bold text-slate-900"
+                      placeholder="Ask me anything about Nepal..."
+                      className="w-full pl-5 pr-14 py-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl focus:ring-2 focus:ring-blue-500/20 transition-all text-sm font-bold text-slate-900"
                     />
                     <button 
                       type="submit"
-                      disabled={!message.trim()}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:shadow-none transition-all active:scale-95"
+                      disabled={!message.trim() || isTyping}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-11 h-11 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-lg shadow-blue-600/30 disabled:opacity-50 disabled:shadow-none transition-all active:scale-95"
                     >
                       <Send size={18} />
                     </button>
@@ -190,7 +224,7 @@ export default function ChatWidget() {
       {/* Trigger Button */}
       <button
         onClick={toggleChat}
-        className="w-16 h-16 rounded-[1.5rem] bg-blue-600 text-white shadow-2xl shadow-blue-600/40 flex items-center justify-center hover:scale-110 transition-transform relative group"
+        className="w-16 h-16 rounded-[1.5rem] bg-gradient-to-r from-blue-600 to-indigo-700 text-white shadow-2xl shadow-indigo-600/40 flex items-center justify-center hover:scale-110 transition-transform relative group"
       >
         <AnimatePresence mode='wait'>
           {isOpen ? (
@@ -211,7 +245,7 @@ export default function ChatWidget() {
         )}
 
         <div className="absolute right-full mr-4 top-1/2 -translate-y-1/2 bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-          Chat with us
+          Chat with AI
         </div>
       </button>
     </div>

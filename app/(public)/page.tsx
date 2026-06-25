@@ -251,8 +251,8 @@ export default function Home() {
               </div>
               <h2 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter">Featured Destinations</h2>
             </div>
-            <Link href="/places" className="flex items-center gap-2 text-blue-600 font-black text-sm uppercase tracking-widest group">
-              View All Places
+            <Link href="/packages" className="flex items-center gap-2 text-blue-600 font-black text-sm uppercase tracking-widest group">
+              View All Packages
               <ArrowRight size={18} className="group-hover:translate-x-2 transition-transform" />
             </Link>
           </div>

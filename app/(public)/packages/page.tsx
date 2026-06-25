@@ -106,7 +106,10 @@ export default function Packages() {
                         {pkg.price ? (typeof pkg.price === 'number' ? `₨${pkg.price.toLocaleString()}` : `₨${pkg.price}`) : 'Contact us'}
                       </span>
                     </div>
-                    <Link href={`/packages/${pkg.id}`} className="no-underline">
+                    <Link 
+                      href={`/booking?type=package&id=${pkg.id}&name=${encodeURIComponent(pkg.title || pkg.name)}&price=${pkg.price || 0}`} 
+                      className="no-underline"
+                    >
                       <Button size="sm" className="rounded-xl font-black uppercase tracking-widest">Book Now</Button>
                     </Link>
                   </div>

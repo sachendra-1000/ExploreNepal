@@ -6,11 +6,11 @@ import Link from 'next/link'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import Toast from '@/components/Toast'
 import { useAuth } from '@/context/AuthContext'
-import { subscribeToHotels, subscribeToGuides, createBooking } from '@/lib/firestore'
+import { subscribeToHotels, subscribeToGuides, subscribeToPackages, createBooking } from '@/lib/firestore'
 import BookingForm, { BookingFormData } from '@/components/ui/BookingForm'
 import BookingSuccessPopup from '@/components/ui/BookingSuccessPopup'
 import { CartItem, getCart, getSelectedService, clearSelectedService, clearCart } from '@/lib/cartUtils'
-import { Hotel as HotelIcon, Compass, ArrowLeft, ShieldCheck, Star, Calendar } from 'lucide-react'
+import { Hotel as HotelIcon, Compass, MapPin, ArrowLeft, ShieldCheck, Star, Calendar } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
 
@@ -37,20 +37,31 @@ interface Guide {
   price: number
 }
 
+interface Package {
+  id: string
+  title: string
+  name?: string
+  price: number
+  location?: string
+  duration?: string
+}
+
 function BookingContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user } = useAuth()
   
   // Get URL parameters
-  const urlType = (searchParams?.get('type') as 'hotel' | 'guide' | null) ?? null
+  const urlType = (searchParams?.get('type') as 'hotel' | 'guide' | 'package' | null) ?? null
   const preselectedId = searchParams?.get('id') ?? null
   const preselectedName = searchParams?.get('name') ?? null
+  const preselectedPrice = searchParams?.get('price') ?? null
   
   // State
-  const [bookingType, setBookingType] = useState<'hotel' | 'guide' | null>(urlType)
+  const [bookingType, setBookingType] = useState<'hotel' | 'guide' | 'package' | null>(urlType)
   const [hotels, setHotels] = useState<Hotel[]>([])
   const [guides, setGuides] = useState<Guide[]>([])
+  const [packages, setPackages] = useState<Package[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast] = useState<ToastState>({ show: false, type: '', message: '' })
@@ -62,7 +73,7 @@ function BookingContent() {
   const [isSuccessPopupOpen, setIsSuccessPopupOpen] = useState(false)
   const [bookingResult, setBookingResult] = useState<any>(null)
   
-  // Load hotels and guides from Firestore
+  // Load hotels, guides, and packages from Firestore
   useEffect(() => {
     setLoading(true)
     
@@ -72,12 +83,17 @@ function BookingContent() {
     
     const unsubGuides = subscribeToGuides((data: Guide[]) => {
       setGuides(data)
+    })
+
+    const unsubPackages = subscribeToPackages((data: Package[]) => {
+      setPackages(data)
       setLoading(false)
     })
 
     return () => {
       unsubHotels()
       unsubGuides()
+      unsubPackages()
     }
   }, [])
 
@@ -89,7 +105,7 @@ function BookingContent() {
       const cartItem = cart[0]
       setSelectedService(cartItem)
       setIsFromCart(true)
-      setBookingType(cartItem.type as 'hotel' | 'guide')
+      setBookingType(cartItem.type as 'hotel' | 'guide' | 'package')
       setIsBookingFormOpen(true)
       return
     }
@@ -99,7 +115,7 @@ function BookingContent() {
     if (selectedService) {
       setSelectedService(selectedService)
       setIsFromCart(false)
-      setBookingType(selectedService.type as 'hotel' | 'guide')
+      setBookingType(selectedService.type as 'hotel' | 'guide' | 'package')
       setIsBookingFormOpen(true)
       clearSelectedService()
       return
@@ -107,25 +123,34 @@ function BookingContent() {
 
     // Check URL params
     if (preselectedId && preselectedName && urlType) {
+      let price = 0
+      if (preselectedPrice) {
+        price = parseFloat(preselectedPrice)
+      } else if (urlType === 'hotel') {
+        price = hotels.find(h => h.id === preselectedId)?.price || 0
+      } else if (urlType === 'guide') {
+        price = guides.find(g => g.id === preselectedId)?.price || 0
+      } else if (urlType === 'package') {
+        price = packages.find(p => p.id === preselectedId)?.price || 0
+      }
+
       const service: CartItem = {
         id: preselectedId,
         name: preselectedName,
         type: urlType,
-        price: urlType === 'hotel' 
-          ? hotels.find(h => h.id === preselectedId)?.price || 0
-          : guides.find(g => g.id === preselectedId)?.price || 0
+        price: price
       }
       setSelectedService(service)
       setIsFromCart(false)
       setIsBookingFormOpen(true)
     }
-  }, [preselectedId, preselectedName, urlType, hotels, guides])
+  }, [preselectedId, preselectedName, preselectedPrice, urlType, hotels, guides, packages])
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ show: true, type, message })
   }
 
-  const handleTypeSelect = (type: 'hotel' | 'guide') => {
+  const handleTypeSelect = (type: 'hotel' | 'guide' | 'package') => {
     setBookingType(type)
     setIsBookingFormOpen(false)
   }
@@ -144,10 +169,12 @@ function BookingContent() {
       userId: user.uid,
       userEmail: user.email,
       userName: bookingData.contactName || '',
+      serviceName: bookingData.serviceName,
       type: bookingData.serviceType,
       phone: bookingData.contactPhone || '',
       specialRequests: bookingData.specialRequests || '',
       status: 'pending',
+      paymentStatus: 'pending',
       travelDate: bookingData.travelDate,
       numberOfTravelers: bookingData.numberOfPeople || 1,
       pickupLocation: '',
@@ -184,6 +211,21 @@ function BookingContent() {
         guideId: guide.id,
         guideName: guide.name,
         specialization: guide.specialization
+      }
+    } else if (bookingData.serviceType === 'package') {
+      const pkg = packages.find(p => p.id === bookingData.serviceId)
+      if (!pkg) {
+        showToast('error', 'Please select a package')
+        setSubmitting(false)
+        return
+      }
+      
+      bookingDataForFirestore = {
+        ...bookingDataForFirestore,
+        packageId: pkg.id,
+        packageName: pkg.title || pkg.name,
+        location: pkg.location,
+        duration: pkg.duration
       }
     }
 
@@ -275,7 +317,7 @@ function BookingContent() {
                 <p className="text-slate-500 font-medium">Select a category to see available options</p>
               </div>
 
-              <div className="grid md:grid-cols-2 gap-8">
+              <div className="grid md:grid-cols-3 gap-8">
                 <Card 
                   className={`group rounded-[3rem] border-2 transition-all cursor-pointer overflow-hidden ${bookingType === 'hotel' ? 'border-blue-600 bg-blue-50/30' : 'border-slate-100 hover:border-blue-200'}`}
                   onClick={() => handleTypeSelect('hotel')}
@@ -311,6 +353,24 @@ function BookingContent() {
                     </Button>
                   </CardContent>
                 </Card>
+
+                <Card 
+                  className={`group rounded-[3rem] border-2 transition-all cursor-pointer overflow-hidden ${bookingType === 'package' ? 'border-blue-600 bg-blue-50/30' : 'border-slate-100 hover:border-blue-200'}`}
+                  onClick={() => handleTypeSelect('package')}
+                >
+                  <CardContent className="p-10 text-center space-y-6">
+                    <div className="w-20 h-20 bg-orange-500 rounded-[2rem] flex items-center justify-center text-white mx-auto shadow-xl shadow-orange-500/20 group-hover:scale-110 transition-transform">
+                      <MapPin className="w-10 h-10" />
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-black text-slate-900">Tour Packages</h3>
+                      <p className="text-slate-500 font-medium">Complete Tours & Adventures</p>
+                    </div>
+                    <Button variant={bookingType === 'package' ? 'primary' : 'secondary'} className="w-full rounded-2xl">
+                      Select Packages
+                    </Button>
+                  </CardContent>
+                </Card>
               </div>
 
               {bookingType && (
@@ -318,7 +378,7 @@ function BookingContent() {
                   <div className="bg-white rounded-[2.5rem] shadow-2xl shadow-slate-200/50 p-10 border border-slate-100 space-y-8">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xl font-black text-slate-900">
-                        {bookingType === 'hotel' ? 'Available Hotels' : 'Available Guides'}
+                        {bookingType === 'hotel' ? 'Available Hotels' : bookingType === 'guide' ? 'Available Guides' : 'Available Packages'}
                       </h4>
                       <Button variant="ghost" size="sm" onClick={() => setBookingType(null)} className="text-blue-600 font-black">
                         <ArrowLeft className="w-4 h-4 mr-2" />
@@ -343,7 +403,7 @@ function BookingContent() {
                               })
                               setIsBookingFormOpen(true)
                             }
-                          } else {
+                          } else if (bookingType === 'guide') {
                             const guide = guides.find(g => g.id === val)
                             if (guide) {
                               setSelectedService({
@@ -352,6 +412,18 @@ function BookingContent() {
                                 type: 'guide',
                                 price: guide.price,
                                 specialization: guide.specialization
+                              })
+                              setIsBookingFormOpen(true)
+                            }
+                          } else if (bookingType === 'package') {
+                            const pkg = packages.find(p => p.id === val)
+                            if (pkg) {
+                              setSelectedService({
+                                id: pkg.id,
+                                name: pkg.title || pkg.name,
+                                type: 'package',
+                                price: pkg.price,
+                                location: pkg.location
                               })
                               setIsBookingFormOpen(true)
                             }
@@ -365,10 +437,16 @@ function BookingContent() {
                               {hotel.name} — ₨{hotel.price.toLocaleString()}/night
                             </option>
                           ))
-                        ) : (
+                        ) : bookingType === 'guide' ? (
                           guides.map((guide) => (
                             <option key={guide.id} value={guide.id}>
                               {guide.name} — ₨{guide.price.toLocaleString()}/day
+                            </option>
+                          ))
+                        ) : (
+                          packages.map((pkg) => (
+                            <option key={pkg.id} value={pkg.id}>
+                              {pkg.title || pkg.name} — ₨{pkg.price.toLocaleString()}
                             </option>
                           ))
                         )}
@@ -402,7 +480,7 @@ function BookingContent() {
           service={{
             id: selectedService.id,
             name: selectedService.name,
-            type: selectedService.type as 'hotel' | 'guide' | 'bus',
+            type: selectedService.type as 'hotel' | 'guide' | 'bus' | 'package',
             price: selectedService.price,
             location: (selectedService as any).location,
             specialization: (selectedService as any).specialization

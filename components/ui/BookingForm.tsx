@@ -11,7 +11,7 @@ interface BookingFormProps {
   service: {
     id: string
     name: string
-    type: 'hotel' | 'guide' | 'bus'
+    type: 'hotel' | 'guide' | 'bus' | 'package'
     price: number
     location?: string
     from?: string
@@ -100,8 +100,10 @@ export default function BookingForm({ isOpen, onClose, service, onSubmit }: Book
                   <span>{service.from} → {service.to}</span>
                 ) : service.type === 'hotel' ? (
                   <span>{service.location}</span>
-                ) : (
+                ) : service.type === 'guide' ? (
                   <span>{service.specialization} Expert</span>
+                ) : (
+                  <span>{service.location}</span>
                 )}
               </div>
             </div>

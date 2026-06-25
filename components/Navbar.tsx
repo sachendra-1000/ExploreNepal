@@ -115,14 +115,24 @@ export default function Navbar() {
                         <p className="text-sm font-bold text-white truncate mt-1">{user.email}</p>
                       </div>
                       {user.role !== 'admin' && (
-                        <Link 
-                          href="/user"
-                          className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-300 hover:text-blue-400 hover:bg-slate-700 transition-colors"
-                          onClick={() => setIsProfileOpen(false)}
-                        >
-                          <User size={16} />
-                          My Profile
-                        </Link>
+                        <>
+                          <Link 
+                            href="/bookings"
+                            className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-300 hover:text-blue-400 hover:bg-slate-700 transition-colors"
+                            onClick={() => setIsProfileOpen(false)}
+                          >
+                            <User size={16} />
+                            My Bookings
+                          </Link>
+                          <Link 
+                            href="/user"
+                            className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-300 hover:text-blue-400 hover:bg-slate-700 transition-colors"
+                            onClick={() => setIsProfileOpen(false)}
+                          >
+                            <User size={16} />
+                            My Profile
+                          </Link>
+                        </>
                       )}
                       <button 
                         onClick={handleLogout}
@@ -213,14 +223,24 @@ export default function Navbar() {
               {user && (
                 <div className="pt-4 border-t border-slate-700 mt-4 space-y-2">
                   {user.role !== 'admin' && (
-                    <Link 
-                      href="/user"
-                      className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm text-slate-300 hover:text-blue-400 hover:bg-slate-800 transition-colors font-semibold"
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      <User size={18} />
-                      My Profile
-                    </Link>
+                    <>
+                      <Link 
+                        href="/bookings"
+                        className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm text-slate-300 hover:text-blue-400 hover:bg-slate-800 transition-colors font-semibold"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        <User size={18} />
+                        My Bookings
+                      </Link>
+                      <Link 
+                        href="/user"
+                        className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm text-slate-300 hover:text-blue-400 hover:bg-slate-800 transition-colors font-semibold"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        <User size={18} />
+                        My Profile
+                      </Link>
+                    </>
                   )}
                   <button 
                     onClick={() => { 

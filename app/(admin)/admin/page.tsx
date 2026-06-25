@@ -43,7 +43,9 @@ import {
   ArrowUpRight,
   Activity,
   UserCircle,
-  MessageCircle
+  MessageCircle,
+  Upload,
+  Sparkles
 } from 'lucide-react'
 import {
   AreaChart,
@@ -68,10 +70,12 @@ import {
   subscribeToGuides,
   subscribeToPackages,
   subscribeToBusRoutes,
+  subscribeToLocalTours,
   deleteHotel,
   deleteGuide,
   deletePackage,
   deleteBusRoute,
+  deleteLocalTour,
   updateBookingStatus,
   verifyPayment,
   createHotel,
@@ -81,7 +85,11 @@ import {
   createPackage,
   updatePackage,
   createBusRoute,
-  updateBusRoute
+  updateBusRoute,
+  createLocalTour,
+  updateLocalTour,
+  uploadImage,
+  deleteImage
 } from '@/lib/firestore'
 
 import AdminChat from '@/components/AdminChat'
@@ -125,7 +133,7 @@ function AdminDashboardContent() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [darkMode, setDarkMode] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
-  const [serviceTab, setServiceTab] = useState<'hotels' | 'guides' | 'packages' | 'bus'>('hotels')
+  const [serviceTab, setServiceTab] = useState<'hotels' | 'guides' | 'packages' | 'bus' | 'local-tours'>('hotels')
   const [toast, setToast] = useState({ show: false, type: 'success' as any, message: '' })
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -137,6 +145,7 @@ function AdminDashboardContent() {
   const [guides, setGuides] = useState<any[]>([])
   const [packages, setPackages] = useState<any[]>([])
   const [busRoutes, setBusRoutes] = useState<any[]>([])
+  const [localTours, setLocalTours] = useState<any[]>([])
   const [stats, setStats] = useState<any>(null)
 
   // Modal States
@@ -152,12 +161,23 @@ function AdminDashboardContent() {
   })
   const [serviceFormData, setServiceFormData] = useState({
     name: '',
+    category: 'Hotel',
     location: '',
+    shortDescription: '',
+    fullDescription: '',
     price: '',
+    discountPrice: '',
     rating: 4.5,
-    image: '',
-    available: true
+    duration: '',
+    capacity: '',
+    available: true,
+    images: [] as string[],
+    highlights: '',
+    status: 'active'
   })
+  const [selectedImages, setSelectedImages] = useState<File[]>([])
+  const [previewImages, setPreviewImages] = useState<string[]>([])
+  const [isUploading, setIsUploading] = useState(false)
 
   // Load Data
   useEffect(() => {
@@ -169,6 +189,7 @@ function AdminDashboardContent() {
     const unsubGuides = subscribeToGuides((data: any) => setGuides(data))
     const unsubPackages = subscribeToPackages((data: any) => setPackages(data))
     const unsubBus = subscribeToBusRoutes((data: any) => setBusRoutes(data))
+    const unsubLocalTours = subscribeToLocalTours((data: any) => setLocalTours(data))
 
     const fetchStats = async () => {
       const result = await getDashboardStats()
@@ -179,7 +200,7 @@ function AdminDashboardContent() {
     fetchStats()
 
     return () => {
-      unsubUsers(); unsubBookings(); unsubHotels(); unsubGuides(); unsubPackages(); unsubBus();
+      unsubUsers(); unsubBookings(); unsubHotels(); unsubGuides(); unsubPackages(); unsubBus(); unsubLocalTours();
     }
   }, [])
 
@@ -220,38 +241,114 @@ function AdminDashboardContent() {
   const handleOpenServiceModal = (item?: any) => {
     setEditingService(item || null)
     if (item) {
-      setServiceFormData({
+      // Pre-fill form data
+      const formData = {
         name: item.name || item.title || '',
+        category: item.category || 'Hotel',
         location: item.location || '',
+        shortDescription: item.shortDescription || '',
+        fullDescription: item.fullDescription || item.description || '',
         price: item.price?.toString() || '',
+        discountPrice: item.discountPrice?.toString() || '',
         rating: item.rating || 4.5,
-        image: item.image || '',
-        available: item.available !== false
-      })
+        duration: item.duration || '',
+        capacity: item.capacity?.toString() || '',
+        available: item.available !== false,
+        images: item.images || (item.image ? [item.image] : []),
+        highlights: item.highlights?.join(', ') || '',
+        status: item.status || 'active'
+      }
+      setServiceFormData(formData)
+      setPreviewImages(formData.images)
     } else {
       setServiceFormData({
         name: '',
+        category: 'Hotel',
         location: '',
+        shortDescription: '',
+        fullDescription: '',
         price: '',
+        discountPrice: '',
         rating: 4.5,
-        image: '',
-        available: true
+        duration: '',
+        capacity: '',
+        available: true,
+        images: [],
+        highlights: '',
+        status: 'active'
+      })
+      setPreviewImages([])
+    }
+    setSelectedImages([])
+    setShowServiceModal(true)
+  }
+
+  // Handle image file selection
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const files = Array.from(e.target.files)
+      setSelectedImages(files)
+      
+      // Create preview URLs
+      const newPreviews = files.map(file => URL.createObjectURL(file))
+      setPreviewImages([...previewImages, ...newPreviews])
+    }
+  }
+
+  // Remove image from preview
+  const handleRemoveImage = (index: number) => {
+    const newPreviews = [...previewImages]
+    newPreviews.splice(index, 1)
+    setPreviewImages(newPreviews)
+    
+    // If it was a selected file, remove from selectedImages too
+    if (index >= previewImages.length - selectedImages.length) {
+      const fileIndex = index - (previewImages.length - selectedImages.length)
+      const newSelected = [...selectedImages]
+      newSelected.splice(fileIndex, 1)
+      setSelectedImages(newSelected)
+    } else {
+      // It's an existing image from Firestore, remove from form data
+      setServiceFormData({
+        ...serviceFormData,
+        images: newPreviews
       })
     }
-    setShowServiceModal(true)
   }
 
   const handleServiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
+    setIsUploading(true)
     let result
 
     try {
+      let uploadedImageUrls = [...serviceFormData.images]
+
+      // Upload new images to Firebase Storage
+      if (selectedImages.length > 0) {
+        const uploadPromises = selectedImages.map(file => 
+          uploadImage(file, `services/${serviceTab}`)
+        )
+        const uploadResults = await Promise.all(uploadPromises)
+        const newUrls = uploadResults
+          .filter(res => res.success)
+          .map(res => res.url)
+        uploadedImageUrls = [...uploadedImageUrls, ...newUrls]
+      }
+
       // Parse numeric fields
-      const dataToSave = {
+      const dataToSave: any = {
         ...serviceFormData,
+        images: uploadedImageUrls,
         price: parseFloat(serviceFormData.price) || 0,
-        rating: parseFloat(serviceFormData.rating) || 4.5
+        discountPrice: serviceFormData.discountPrice ? parseFloat(serviceFormData.discountPrice) : null,
+        rating: serviceFormData.rating || 4.5,
+        capacity: serviceFormData.capacity ? parseInt(serviceFormData.capacity) : null
+      }
+      
+      // Parse highlights (comma separated to array)
+      if (dataToSave.highlights) {
+        dataToSave.highlights = dataToSave.highlights.split(',').map((h: string) => h.trim()).filter(Boolean)
       }
 
       if (editingService) {
@@ -264,6 +361,9 @@ function AdminDashboardContent() {
             break
           case 'packages':
             result = await updatePackage(editingService.id, dataToSave)
+            break
+          case 'local-tours':
+            result = await updateLocalTour(editingService.id, dataToSave)
             break
           case 'bus':
             result = await updateBusRoute(editingService.id, dataToSave)
@@ -280,6 +380,9 @@ function AdminDashboardContent() {
           case 'packages':
             result = await createPackage(dataToSave)
             break
+          case 'local-tours':
+            result = await createLocalTour(dataToSave)
+            break
           case 'bus':
             result = await createBusRoute(dataToSave)
             break
@@ -289,13 +392,37 @@ function AdminDashboardContent() {
       if (result.success) {
         showToast('success', editingService ? 'Service updated successfully' : 'Service added successfully')
         setShowServiceModal(false)
+        setSelectedImages([])
+        setPreviewImages([])
       } else {
         showToast('error', 'Failed to save service')
       }
     } catch (error) {
+      console.error('Error saving service:', error)
       showToast('error', 'Failed to save service')
     }
-    setLoading(false)
+    setIsUploading(false)
+  }
+
+  const resetServiceForm = () => {
+    setServiceFormData({
+      name: '',
+      category: 'Hotel',
+      location: '',
+      shortDescription: '',
+      fullDescription: '',
+      price: '',
+      discountPrice: '',
+      rating: 4.5,
+      duration: '',
+      capacity: '',
+      available: true,
+      images: [],
+      highlights: '',
+      status: 'active'
+    })
+    setSelectedImages([])
+    setPreviewImages([])
   }
 
   const handleUpdateBookingStatus = async (bookingId: string, status: string) => {
@@ -312,7 +439,8 @@ function AdminDashboardContent() {
 
   // Sidebar Items
   const sidebarItems = [
-    { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, href: '/admin' },
+    { id: 'ai-settings', label: 'AI Settings', icon: Sparkles, href: '/admin/ai-settings' },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'services', label: 'Services', icon: Package },
     { id: 'bookings', label: 'Bookings', icon: Calendar },
@@ -376,21 +504,36 @@ function AdminDashboardContent() {
           {/* Navigation */}
           <nav className="flex-1 px-4 space-y-1">
             {sidebarItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group ${
-                  activeTab === item.id
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-                    : 'text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800'
-                }`}
-              >
-                <item.icon className={`w-5 h-5 transition-transform duration-300 ${activeTab === item.id ? 'scale-110' : 'group-hover:scale-110'}`} />
-                <span className="font-bold tracking-tight">{item.label}</span>
-                {activeTab === item.id && (
-                  <motion.div layoutId="activePill" className="ml-auto w-1.5 h-6 bg-white/40 rounded-full" />
-                )}
-              </button>
+              item.href ? (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group ${
+                    activeTab === item.id
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                      : 'text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <item.icon className={`w-5 h-5 transition-transform duration-300 ${activeTab === item.id ? 'scale-110' : 'group-hover:scale-110'}`} />
+                  <span className="font-bold tracking-tight">{item.label}</span>
+                </Link>
+              ) : (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group ${
+                    activeTab === item.id
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                      : 'text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <item.icon className={`w-5 h-5 transition-transform duration-300 ${activeTab === item.id ? 'scale-110' : 'group-hover:scale-110'}`} />
+                  <span className="font-bold tracking-tight">{item.label}</span>
+                  {activeTab === item.id && (
+                    <motion.div layoutId="activePill" className="ml-auto w-1.5 h-6 bg-white/40 rounded-full" />
+                  )}
+                </button>
+              )
             ))}
           </nav>
 
@@ -742,6 +885,7 @@ function AdminDashboardContent() {
                   { id: 'hotels', label: 'Hotels', icon: Hotel },
                   { id: 'guides', label: 'Guides', icon: Compass },
                   { id: 'packages', label: 'Packages', icon: Package },
+                  { id: 'local-tours', label: 'Local Tours', icon: MapPin },
                   { id: 'bus', label: 'Transport', icon: Bus },
                 ].map((t: any) => (
                   <button
@@ -758,7 +902,7 @@ function AdminDashboardContent() {
 
               {/* Service Grid/List */}
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {(serviceTab === 'hotels' ? hotels : serviceTab === 'guides' ? guides : serviceTab === 'packages' ? packages : busRoutes).map((item: any) => (
+                {(serviceTab === 'hotels' ? hotels : serviceTab === 'guides' ? guides : serviceTab === 'packages' ? packages : serviceTab === 'local-tours' ? localTours : busRoutes).map((item: any) => (
                   <motion.div 
                     layout
                     key={item.id} 
@@ -785,6 +929,9 @@ function AdminDashboardContent() {
                                   break
                                 case 'packages':
                                   result = await deletePackage(item.id)
+                                  break
+                                case 'local-tours':
+                                  result = await deleteLocalTour(item.id)
                                   break
                                 case 'bus':
                                   result = await deleteBusRoute(item.id)
@@ -1157,41 +1304,281 @@ function AdminDashboardContent() {
                 <button onClick={() => setShowServiceModal(false)} className="p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-colors text-slate-400"><X className="w-6 h-6" /></button>
               </div>
 
-              <form onSubmit={handleServiceSubmit} className="p-10 space-y-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Name / Title</label>
-                  <input type="text" required value={serviceFormData.name} onChange={(e) => setServiceFormData({...serviceFormData, name: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold" />
+              <form onSubmit={handleServiceSubmit} className="p-10 space-y-8 max-h-[90vh] overflow-y-auto">
+                {/* Basic Information Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+                      <span className="text-indigo-600 font-black text-xs">1</span>
+                    </div>
+                    <h4 className="text-sm font-black tracking-tight text-slate-900 dark:text-white uppercase">Basic Information</h4>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2 sm:col-span-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Service Name *</label>
+                      <input 
+                        type="text" 
+                        required 
+                        value={serviceFormData.name} 
+                        onChange={(e) => setServiceFormData({...serviceFormData, name: e.target.value})} 
+                        className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold"
+                        placeholder="Enter service name"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Category *</label>
+                      <select 
+                        value={serviceFormData.category} 
+                        onChange={(e) => setServiceFormData({...serviceFormData, category: e.target.value})} 
+                        className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold"
+                      >
+                        <option value="Hotel">Hotel</option>
+                        <option value="Tour">Tour</option>
+                        <option value="Trek">Trek</option>
+                        <option value="Vehicle">Vehicle</option>
+                        <option value="Guide">Guide</option>
+                        <option value="Local Tour">Local Tour</option>
+                        <option value="Adventure">Adventure</option>
+                      </select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Location *</label>
+                      <input 
+                        type="text" 
+                        required 
+                        value={serviceFormData.location} 
+                        onChange={(e) => setServiceFormData({...serviceFormData, location: e.target.value})} 
+                        className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold"
+                        placeholder="Enter location"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2 sm:col-span-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Short Description</label>
+                      <input 
+                        type="text" 
+                        value={serviceFormData.shortDescription} 
+                        onChange={(e) => setServiceFormData({...serviceFormData, shortDescription: e.target.value})} 
+                        className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold"
+                        placeholder="Brief description"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2 sm:col-span-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Full Description</label>
+                      <textarea 
+                        value={serviceFormData.fullDescription} 
+                        onChange={(e) => setServiceFormData({...serviceFormData, fullDescription: e.target.value})} 
+                        className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold resize-none"
+                        rows={3}
+                        placeholder="Detailed description"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Location</label>
-                  <input type="text" required value={serviceFormData.location} onChange={(e) => setServiceFormData({...serviceFormData, location: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold" />
+
+                {/* Pricing Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                      <span className="text-emerald-600 font-black text-xs">2</span>
+                    </div>
+                    <h4 className="text-sm font-black tracking-tight text-slate-900 dark:text-white uppercase">Pricing</h4>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Price (Rs.) *</label>
+                      <input 
+                        type="number" 
+                        required 
+                        value={serviceFormData.price} 
+                        onChange={(e) => setServiceFormData({...serviceFormData, price: e.target.value})} 
+                        className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold"
+                        placeholder="Enter price"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Discount Price (Rs.)</label>
+                      <input 
+                        type="number" 
+                        value={serviceFormData.discountPrice} 
+                        onChange={(e) => setServiceFormData({...serviceFormData, discountPrice: e.target.value})} 
+                        className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold"
+                        placeholder="Enter discount price (optional)"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Rating (0-5)</label>
+                      <input 
+                        type="number" 
+                        step="0.1" 
+                        min="0" 
+                        max="5" 
+                        value={serviceFormData.rating} 
+                        onChange={(e) => setServiceFormData({...serviceFormData, rating: parseFloat(e.target.value)})} 
+                        className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold"
+                        placeholder="4.5"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+
+                {/* Service Details Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                      <span className="text-amber-600 font-black text-xs">3</span>
+                    </div>
+                    <h4 className="text-sm font-black tracking-tight text-slate-900 dark:text-white uppercase">Service Details</h4>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Duration</label>
+                      <input 
+                        type="text" 
+                        value={serviceFormData.duration} 
+                        onChange={(e) => setServiceFormData({...serviceFormData, duration: e.target.value})} 
+                        className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold"
+                        placeholder="e.g., 2 hours"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Capacity</label>
+                      <input 
+                        type="number" 
+                        value={serviceFormData.capacity} 
+                        onChange={(e) => setServiceFormData({...serviceFormData, capacity: e.target.value})} 
+                        className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold"
+                        placeholder="e.g., 10"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status</label>
+                      <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl">
+                        <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                          {serviceFormData.available ? 'Active' : 'Inactive'}
+                        </span>
+                        <div 
+                          onClick={() => setServiceFormData({...serviceFormData, available: !serviceFormData.available})} 
+                          className={`w-12 h-6 rounded-full relative cursor-pointer transition-all ${serviceFormData.available ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'}`}
+                        >
+                          <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${serviceFormData.available ? 'left-7' : 'left-1'}`} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Price (Rs.)</label>
-                    <input type="number" required value={serviceFormData.price} onChange={(e) => setServiceFormData({...serviceFormData, price: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Rating</label>
-                    <input type="number" step="0.1" min="0" max="5" value={serviceFormData.rating} onChange={(e) => setServiceFormData({...serviceFormData, rating: parseFloat(e.target.value)})} className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold" />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Image URL</label>
-                  <input type="url" value={serviceFormData.image} onChange={(e) => setServiceFormData({...serviceFormData, image: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold" />
-                </div>
-                <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl">
-                  <div>
-                    <p className="text-sm font-black text-slate-900 dark:text-white">Available</p>
-                    <p className="text-[10px] text-slate-500 font-medium">Mark this service as available for booking</p>
-                  </div>
-                  <div onClick={() => setServiceFormData({...serviceFormData, available: !serviceFormData.available})} className={`w-12 h-6 rounded-full relative cursor-pointer transition-all ${serviceFormData.available ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}>
-                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${serviceFormData.available ? 'left-7' : 'left-1'}`} />
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Highlights (comma separated)</label>
+                    <input 
+                      type="text" 
+                      value={serviceFormData.highlights} 
+                      onChange={(e) => setServiceFormData({...serviceFormData, highlights: e.target.value})} 
+                      className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-indigo-600/20 font-bold"
+                      placeholder="e.g., Guided tour, Refreshments, Transportation"
+                    />
                   </div>
                 </div>
-                <div className="pt-6 flex gap-4">
-                  <button type="button" onClick={() => setShowServiceModal(false)} className="flex-1 py-4 rounded-2xl font-black text-sm border border-slate-200 dark:border-slate-800 hover:bg-slate-50 transition-all">Cancel</button>
-                  <button type="submit" className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all">{editingService ? 'Save Changes' : 'Add Service'}</button>
+
+                {/* Media Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
+                      <span className="text-rose-600 font-black text-xs">4</span>
+                    </div>
+                    <h4 className="text-sm font-black tracking-tight text-slate-900 dark:text-white uppercase">Media</h4>
+                  </div>
+                  
+                  {/* Image Upload Area */}
+                  <div className="space-y-4">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Upload Images</label>
+                    
+                    {/* Image Previews */}
+                    {previewImages.length > 0 && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {previewImages.map((img, index) => (
+                          <div key={index} className="relative group">
+                            <img 
+                              src={img} 
+                              alt={`Preview ${index + 1}`} 
+                              className="w-full h-32 object-cover rounded-2xl"
+                            />
+                            <button 
+                              type="button" 
+                              onClick={() => handleRemoveImage(index)}
+                              className="absolute top-2 right-2 p-1 bg-white rounded-full shadow-md text-rose-500 hover:bg-rose-500 hover:text-white transition-all"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* File Input */}
+                    <label className="flex flex-col items-center justify-center w-full p-6 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-3xl bg-slate-50 dark:bg-slate-800 cursor-pointer hover:border-indigo-400 transition-all">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Upload size={36} className="text-slate-400" />
+                        <p className="text-sm font-bold text-slate-600 dark:text-slate-400">
+                          Click to upload or drag and drop
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          PNG, JPG, JPEG up to 10MB
+                        </p>
+                      </div>
+                      <input 
+                        type="file" 
+                        multiple 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={handleImageSelect} 
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setShowServiceModal(false)
+                      resetServiceForm()
+                    }} 
+                    className="flex-1 py-4 rounded-2xl font-black text-sm border border-slate-200 dark:border-slate-800 hover:bg-slate-50 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={resetServiceForm} 
+                    className="px-6 py-4 rounded-2xl font-black text-sm border border-slate-200 dark:border-slate-800 hover:bg-slate-50 transition-all"
+                  >
+                    Reset
+                  </button>
+                  <button 
+                    type="submit" 
+                    disabled={isUploading} 
+                    className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isUploading ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      editingService ? 'Save Changes' : 'Add Service'
+                    )}
+                  </button>
                 </div>
               </form>
             </motion.div>
