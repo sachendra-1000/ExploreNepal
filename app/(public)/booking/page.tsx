@@ -420,7 +420,7 @@ function BookingContent() {
                             if (pkg) {
                               setSelectedService({
                                 id: pkg.id,
-                                name: pkg.title || pkg.name,
+                                name: (pkg.title || pkg.name || 'Package'),
                                 type: 'package',
                                 price: pkg.price,
                                 location: pkg.location
@@ -446,7 +446,7 @@ function BookingContent() {
                         ) : (
                           packages.map((pkg) => (
                             <option key={pkg.id} value={pkg.id}>
-                              {pkg.title || pkg.name} — ₨{pkg.price.toLocaleString()}
+                              {(pkg.title || pkg.name || 'Package')} — ₨{pkg.price.toLocaleString()}
                             </option>
                           ))
                         )}
