@@ -60,9 +60,40 @@
 }
 
 .container-custom {
-  max-width: 1200px;
+  width: 100%;
+  max-width: 100%;
   margin: 0 auto;
-  padding: 0 1.5rem;
+  padding: 0 1rem;
+}
+
+@media (min-width: 640px) {
+  .container-custom {
+    padding: 0 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container-custom {
+    max-width: 1024px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .container-custom {
+    max-width: 1200px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .container-custom {
+    max-width: 1400px;
+  }
+}
+
+@media (min-width: 1920px) {
+  .container-custom {
+    max-width: 1800px;
+  }
 }
 
 .no-scrollbar::-webkit-scrollbar {

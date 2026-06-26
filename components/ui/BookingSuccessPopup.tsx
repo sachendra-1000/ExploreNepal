@@ -3,6 +3,8 @@
 import { CheckCircle, Mail, MapPin, Calendar, CreditCard, Download, Navigation, Phone } from 'lucide-react'
 import Button from './Button'
 import Modal from './Modal'
+import { generateReceiptPDF, prepareReceiptData } from '@/lib/receiptGenerator'
+import { useState } from 'react'
 
 interface BookingSuccessPopupProps {
   isOpen: boolean
@@ -19,30 +21,24 @@ interface BookingSuccessPopupProps {
     customerName: string
     customerEmail: string
     customerPhone: string
+    [key: string]: any
   }
 }
 
 export default function BookingSuccessPopup({ isOpen, onClose, bookingData }: BookingSuccessPopupProps) {
-  const handleDownloadReceipt = () => {
-    const receiptContent = `
-EXPLORE NEPAL - BOOKING CONFIRMATION
-====================================
-Booking ID: ${bookingData.bookingId}
-Date: ${new Date().toLocaleDateString()}
-Customer: ${bookingData.customerName}
-Service: ${bookingData.serviceName}
-Total Amount: Rs. ${bookingData.totalAmount}
-`.trim()
+  const [isGenerating, setIsGenerating] = useState(false)
 
-    const blob = new Blob([receiptContent], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `receipt-${bookingData.bookingId}.txt`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+  const handleDownloadReceipt = async () => {
+    try {
+      setIsGenerating(true)
+      const receiptData = prepareReceiptData(bookingData)
+      await generateReceiptPDF(receiptData)
+    } catch (error) {
+      console.error('Error generating receipt:', error)
+      alert('Failed to generate receipt. Please try again.')
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   return (
@@ -77,8 +73,9 @@ Total Amount: Rs. ${bookingData.totalAmount}
         </div>
 
         <div className="flex flex-col gap-2">
-          <Button onClick={handleDownloadReceipt} variant="outline" className="w-full">
-            <Download size={16} className="mr-2" /> Download Receipt
+          <Button onClick={handleDownloadReceipt} variant="outline" className="w-full" disabled={isGenerating}>
+            <Download size={16} className="mr-2" />
+            {isGenerating ? 'Generating...' : 'Download Receipt'}
           </Button>
           <Button onClick={onClose} className="w-full">Close</Button>
         </div>

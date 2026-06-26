@@ -7,6 +7,7 @@ import ProtectedRoute from '@/components/ProtectedRoute'
 import Toast from '@/components/Toast'
 import { useAuth } from '@/context/AuthContext'
 import { subscribeToUserBookings, cancelBooking } from '@/lib/firestore'
+import { generateReceiptPDF, prepareReceiptData } from '@/lib/receiptGenerator'
 import {
   Calendar,
   Clock,
@@ -46,6 +47,20 @@ function MyBookingsContent() {
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState({ show: false, type: 'success' as any, message: '' })
   const [activeFilter, setActiveFilter] = useState<'all' | 'pending' | 'confirmed' | 'cancelled' | 'completed'>('all')
+  const [generatingReceiptId, setGeneratingReceiptId] = useState<string | null>(null)
+
+  const handleDownloadReceipt = async (booking: Booking) => {
+    try {
+      setGeneratingReceiptId(booking.id)
+      const receiptData = prepareReceiptData(booking)
+      await generateReceiptPDF(receiptData)
+    } catch (error) {
+      console.error('Error generating receipt:', error)
+      showToast('error', 'Failed to generate receipt')
+    } finally {
+      setGeneratingReceiptId(null)
+    }
+  }
 
   // Load bookings
   useEffect(() => {
@@ -186,11 +201,11 @@ function MyBookingsContent() {
             </div>
           ) : (
             <div className="space-y-6">
-              {filteredBookings.map(booking => {
-                const StatusIcon = getStatusIcon(booking.status)
+              {filteredBookings.map((booking) => {
+                const StatusIcon = getStatusIcon(booking.status);
                 return (
-                  <div 
-                    key={booking.id} 
+                  <div
+                    key={booking.id}
                     className="bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm hover:shadow-lg transition-shadow"
                   >
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
@@ -200,8 +215,14 @@ function MyBookingsContent() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-4 mb-2">
-                            <h3 className="text-xl font-black text-slate-900 truncate">{booking.serviceName || booking.hotelName || booking.guideName || booking.packageName || 'Service'}</h3>
-                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${getStatusBadgeStyle(booking.status)}`}>
+                            <h3 className="text-xl font-black text-slate-900 truncate">
+                              {booking.serviceName || booking.hotelName || booking.guideName || booking.packageName || "Service"}
+                            </h3>
+                            <span
+                              className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${getStatusBadgeStyle(
+                                booking.status
+                              )}`}
+                            >
                               {booking.status}
                             </span>
                             <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-500">
@@ -222,7 +243,7 @@ function MyBookingsContent() {
                             {booking.numberOfTravelers && (
                               <div className="flex items-center gap-2">
                                 <span className="text-slate-600 font-bold">{booking.numberOfTravelers}</span>
-                                <span>traveler{booking.numberOfTravelers !== 1 ? 's' : ''}</span>
+                                <span>traveler{booking.numberOfTravelers !== 1 ? "s" : ""}</span>
                               </div>
                             )}
                           </div>
@@ -237,18 +258,26 @@ function MyBookingsContent() {
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
-                          {booking.status === 'confirmed' && (
+                          {booking.status === "confirmed" && (
                             <>
-                              <button className="p-3 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
-                                <Download className="w-5 h-5 text-slate-600" />
+                              <button
+                                onClick={() => handleDownloadReceipt(booking)}
+                                disabled={generatingReceiptId === booking.id}
+                                className="p-3 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors disabled:opacity-50"
+                              >
+                                {generatingReceiptId === booking.id ? (
+                                  <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                  <Download className="w-5 h-5 text-blue-600" />
+                                )}
                               </button>
                               <button className="p-3 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
                                 <MessageCircle className="w-5 h-5 text-slate-600" />
                               </button>
                             </>
                           )}
-                          {(booking.status === 'pending' || booking.status === 'confirmed') && (
-                            <button 
+                          {(booking.status === "pending" || booking.status === "confirmed") && (
+                            <button
                               onClick={() => handleCancelBooking(booking.id)}
                               className="p-3 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-colors"
                             >
@@ -259,7 +288,7 @@ function MyBookingsContent() {
                       </div>
                     </div>
                   </div>
-                )
+                );
               })}
             </div>
           )}
