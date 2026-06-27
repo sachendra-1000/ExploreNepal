@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { auth, signInWithEmailAndPassword, googleProvider, signInWithPopup, sendPasswordResetEmail } from '@/lib/firebase'
+import { auth, signInWithEmailAndPassword, googleProvider, signInWithPopup, signInWithRedirect, getRedirectResult, sendPasswordResetEmail } from '@/lib/firebase'
 import { getUserRole } from '@/lib/firestore'
 import Toast from '@/components/Toast'
 
@@ -12,6 +12,34 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [forgotPasswordMode, setForgotPasswordMode] = useState(false)
   const [toast, setToast] = useState({ show: false, type: 'success' as any, message: '' })
+
+  // Check for redirect result on mount
+  useEffect(() => {
+    const checkRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth)
+        if (result?.user) {
+          setLoading(true)
+          const user = result.user
+          const roleData = await getUserRole(user.uid)
+          showToast('success', 'Welcome!')
+          
+          setTimeout(() => {
+            if (roleData.role === 'admin') {
+              router.push('/admin')
+            } else if (roleData.role === 'provider') {
+              router.push('/provider-dashboard')
+            } else {
+              router.push('/')
+            }
+          }, 1500)
+        }
+      } catch (error) {
+        console.error('Redirect error:', error)
+      }
+    }
+    checkRedirect()
+  }, [router])
   
   const [formData, setFormData] = useState({
     email: '',
@@ -124,24 +152,34 @@ export default function Login() {
     setLoading(true)
     
     try {
-      const result = await signInWithPopup(auth, googleProvider)
-      const user = result.user
+      // Check if it's a mobile device
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
       
-      // Get user role from Firestore
-      const roleData = await getUserRole(user.uid)
-      
-      showToast('success', 'Welcome!')
-      
-      // Redirect based on role
-      setTimeout(() => {
-        if (roleData.role === 'admin') {
-          router.push('/admin')
-        } else if (roleData.role === 'provider') {
-          router.push('/provider-dashboard')
-        } else {
-          router.push('/')
-        }
-      }, 1500)
+      if (isMobile) {
+        // Use redirect for mobile
+        await signInWithRedirect(auth, googleProvider)
+        // No need to setLoading(false) here since we're redirecting
+      } else {
+        // Use popup for desktop
+        const result = await signInWithPopup(auth, googleProvider)
+        const user = result.user
+        
+        // Get user role from Firestore
+        const roleData = await getUserRole(user.uid)
+        
+        showToast('success', 'Welcome!')
+        
+        // Redirect based on role
+        setTimeout(() => {
+          if (roleData.role === 'admin') {
+            router.push('/admin')
+          } else if (roleData.role === 'provider') {
+            router.push('/provider-dashboard')
+          } else {
+            router.push('/')
+          }
+        }, 1500)
+      }
     } catch (error: any) {
       console.error('Google login error:', error)
       let errorMessage = 'Google login failed'
@@ -153,7 +191,6 @@ export default function Login() {
       }
       
       showToast('error', errorMessage)
-    } finally {
       setLoading(false)
     }
   }

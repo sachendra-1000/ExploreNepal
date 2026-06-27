@@ -6,9 +6,13 @@ import {
   onAuthStateChanged,
   signOut,
   googleProvider,
-  signInWithPopup
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  db
 } from '@/lib/firebase'
-import { getUserRole } from '@/lib/firestore'
+import { getUserRole, createUserProfile } from '@/lib/firestore'
+import { doc, getDoc } from 'firebase/firestore'
 
 const AuthContext = createContext()
 
@@ -18,6 +22,21 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState(null)
 
   useEffect(() => {
+    // Handle redirect result on initial load
+    const handleRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth)
+        if (result?.user) {
+          // User signed in via redirect, onAuthStateChanged will handle setting user
+          console.log('Google redirect sign in successful')
+        }
+      } catch (err) {
+        console.error('Error handling redirect result:', err)
+      }
+    }
+
+    handleRedirect()
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         // Set user immediately with basic auth data for faster UI render
@@ -38,6 +57,24 @@ export function AuthProvider({ children }) {
         // Fetch role data asynchronously (non-blocking)
         try {
           const roleData = await getUserRole(firebaseUser.uid)
+          
+          // Check if user profile exists (getUserRole returns default if not exists)
+          const docRef = doc(db, 'users', firebaseUser.uid)
+          const docSnap = await getDoc(docRef)
+          
+          if (!docSnap.exists()) {
+            // Create new user profile
+            await createUserProfile(firebaseUser.uid, {
+              name: firebaseUser.displayName || 'User',
+              email: firebaseUser.email || '',
+              phone: '',
+              role: 'tourist',
+              businessType: null,
+              businessName: null,
+              location: null
+            })
+          }
+          
           if (roleData) {
             setUser(prev => ({
               ...prev,
@@ -47,7 +84,7 @@ export function AuthProvider({ children }) {
             }))
           }
         } catch (err) {
-          console.error('Error fetching user role:', err)
+          console.error('Error fetching user role or creating profile:', err)
         }
       } else {
         setUser(null)
@@ -71,8 +108,18 @@ export function AuthProvider({ children }) {
 
   const signInWithGoogle = async () => {
     try {
-      const result = await signInWithPopup(auth, googleProvider)
-      return { success: true, user: result.user }
+      // Check if it's a mobile device
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+      
+      if (isMobile) {
+        // Use redirect for mobile
+        await signInWithRedirect(auth, googleProvider)
+        return { success: true, redirecting: true }
+      } else {
+        // Use popup for desktop
+        const result = await signInWithPopup(auth, googleProvider)
+        return { success: true, user: result.user }
+      }
     } catch (error) {
       setError(error.message)
       return { success: false, error: error.message }

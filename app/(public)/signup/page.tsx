@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { auth, createUserWithEmailAndPassword, updateProfile, googleProvider, signInWithPopup } from '@/lib/firebase'
+import { auth, createUserWithEmailAndPassword, updateProfile, googleProvider, signInWithPopup, signInWithRedirect } from '@/lib/firebase'
 import { createUserProfile } from '@/lib/firestore'
 import Toast from '@/components/Toast'
 
@@ -134,31 +134,41 @@ export default function Signup() {
     setLoading(true)
     
     try {
-      const result = await signInWithPopup(auth, googleProvider)
-      const user = result.user
+      // Check if it's a mobile device
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
       
-      // Create user profile
-      const userData = {
-        name: user.displayName,
-        email: user.email,
-        phone: '',
-        role: userType,
-        businessType: userType === 'provider' ? 'Hotel' : null,
-        businessName: userType === 'provider' ? user.displayName + ' Business' : null,
-        location: userType === 'provider' ? 'Nepal' : null
-      }
-      
-      await createUserProfile(user.uid, userData)
-      
-      showToast('success', 'Welcome! Account created with Google.')
-      
-      setTimeout(() => {
-        if (userType === 'provider') {
-          router.push('/provider-dashboard')
-        } else {
-          router.push('/')
+      if (isMobile) {
+        // Use redirect for mobile
+        await signInWithRedirect(auth, googleProvider)
+        // No need to setLoading(false) here since we're redirecting
+      } else {
+        // Use popup for desktop
+        const result = await signInWithPopup(auth, googleProvider)
+        const user = result.user
+        
+        // Create user profile
+        const userData = {
+          name: user.displayName,
+          email: user.email,
+          phone: '',
+          role: userType,
+          businessType: userType === 'provider' ? 'Hotel' : null,
+          businessName: userType === 'provider' ? user.displayName + ' Business' : null,
+          location: userType === 'provider' ? 'Nepal' : null
         }
-      }, 1500)
+        
+        await createUserProfile(user.uid, userData)
+        
+        showToast('success', 'Welcome! Account created with Google.')
+        
+        setTimeout(() => {
+          if (userType === 'provider') {
+            router.push('/provider-dashboard')
+          } else {
+            router.push('/')
+          }
+        }, 1500)
+      }
     } catch (error: any) {
       console.error('Google signup error:', error)
       let errorMessage = 'Google signup failed'
@@ -170,7 +180,6 @@ export default function Signup() {
       }
       
       showToast('error', errorMessage)
-    } finally {
       setLoading(false)
     }
   }
